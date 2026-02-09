@@ -128,6 +128,16 @@ async function runLoop(apiKey: string, model: string, messages: any[], ctx: Body
     },
   ]
 
+  // Hard guardrails for output formatting: users should never see raw JSX/code unless they explicitly ask.
+  const FORMAT_GUARD = {
+    role: 'system',
+    content:
+      "Output rules: Do NOT output code (no JSX/HTML/TS/JS), no stack traces, no config snippets, no pseudo-code. Reply as a mystical coach in normal text with short paragraphs and occasional bullet points. If the user asks for code explicitly, confirm in one sentence and then keep it minimal.",
+  }
+
+  // Ensure our guard is always first.
+  messages = [FORMAT_GUARD, ...messages]
+
   // hard cap to avoid infinite loops
   for (let i = 0; i < 6; i++) {
     const { ok, status, json } = await openaiChatCompletions(apiKey, {
