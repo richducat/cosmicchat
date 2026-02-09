@@ -938,13 +938,7 @@ export default function CosmicChatClient() {
                     : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-sm'
                 }`}
               >
-                {m.content
-                  .split(' ')
-                  .map((line: any, idx: any) => (
-                    <p key={idx} className={line.startsWith('-') ? 'ml-4' : 'mb-2'}>
-                      {line}
-                    </p>
-                  ))}
+                <div className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</div>
               </div>
             </div>
           ))}
