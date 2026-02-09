@@ -221,47 +221,8 @@ const AstrologyEngine = {
  * ==========================================
  */
 
-const MAJOR_CITIES = [
-  'New York, USA',
-  'London, UK',
-  'Tokyo, Japan',
-  'Paris, France',
-  'Los Angeles, USA',
-  'Sydney, Australia',
-  'Toronto, Canada',
-  'Berlin, Germany',
-  'Mumbai, India',
-  'Dubai, UAE',
-  'Singapore',
-  'Hong Kong',
-  'Chicago, USA',
-  'Miami, USA',
-  'Rome, Italy',
-  'Madrid, Spain',
-  'Moscow, Russia',
-  'Sao Paulo, Brazil',
-  'Mexico City, Mexico',
-  'Cairo, Egypt',
-  'Istanbul, Turkey',
-  'Bangkok, Thailand',
-  'Seoul, South Korea',
-  'Shanghai, China',
-  'Beijing, China',
-  'Buenos Aires, Argentina',
-  'Lagos, Nigeria',
-  'Johannesburg, South Africa',
-  'San Francisco, USA',
-  'Seattle, USA',
-  'Austin, USA',
-  'Denver, USA',
-  'Boston, USA',
-  'Vancouver, Canada',
-  'Montreal, Canada',
-  'Melbourne, Australia',
-  'Auckland, New Zealand',
-  'Dublin, Ireland',
-  'Amsterdam, Netherlands',
-];
+// City suggestions now come from the server (/api/cities?q=...), backed by a full US places dataset.
+// (No external API keys required.)
 
 const CoachService = {
   call: async (messages: any, tools: any, toolCallback: any, ctx: any): Promise<any> => {
@@ -484,18 +445,34 @@ export default function CosmicChatClient() {
 
   const handleCitySearch = (val: any) => {
     setBirthPlace(val);
-    if (val.length > 1) {
-      const filtered = MAJOR_CITIES.filter((c) => c.toLowerCase().includes(val.toLowerCase()));
-      setCitySuggestions(filtered);
-    } else {
-      setCitySuggestions([]);
-    }
+    // suggestions are fetched via an effect with debounce
   };
 
   const selectCity = (city: any) => {
     setBirthPlace(city);
     setCitySuggestions([]);
   };
+
+  // Debounced US city lookup (server-backed)
+  useEffect(() => {
+    const q = (birthPlace || '').trim();
+    if (q.length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      fetch(`/api/cities?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const rows = (data?.results || []).map((x: any) => x.label);
+          setCitySuggestions(rows);
+        })
+        .catch(() => setCitySuggestions([]));
+    }, 180);
+
+    return () => clearTimeout(t);
+  }, [birthPlace]);
 
   // --- RENDERERS ---
   if (view === 'welcome') {
