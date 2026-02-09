@@ -124,14 +124,21 @@ const AstrologyEngine = {
   getChineseSign: (year: any) => AstrologyEngine.chineseZodiac[year % 12],
 
   getZodiacSignSimple: (day: any, month: any) => {
-    const days = [20, 19, 21, 20, 21, 21, 23, 23, 23, 23, 22, 22];
+    // Correct Western sun sign boundaries (month/day).
+    // If day is before the cusp day, you are the previous sign; otherwise the current.
+    const m = parseInt(month);
+    const d = parseInt(day);
+    const cusp = [20, 19, 21, 20, 21, 21, 23, 23, 23, 23, 22, 22];
     const signs = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius'];
-    let idx = month - 1;
-    if (day < days[idx]) {
-      idx = idx - 1;
-      if (idx < 0) idx = 11;
-    }
-    return signs[idx];
+
+    if (!m || !d) return '';
+
+    // This array maps "on/after cusp" to the new sign for each month.
+    const afterCusp = ['Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn'];
+    const beforeCusp = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius'];
+
+    const idx = m - 1;
+    return d < cusp[idx] ? beforeCusp[idx] : afterCusp[idx];
   },
 
   getRisingSignEstimate: (sunSign: any, birthHour: any) => {
@@ -773,6 +780,8 @@ export default function CosmicChatClient() {
   if (view === 'dashboard') {
     const dobDate = new Date(`${birthYear}-${birthMonth}-${birthDay}`);
     const chart: any = AstrologyEngine.computeChart(dobDate);
+    // Use the simple sun-sign calculation for display (computeChart is a rough toy model).
+    chart.Sun.sign = computedSign || AstrologyEngine.getZodiacSignSimple(parseInt(birthDay), parseInt(birthMonth));
     const soulmate: any = AstrologyEngine.getSoulmateTraits(chart);
     const powerDates: any = AstrologyEngine.getNextPowerDates(chart);
     const practical: any = NumerologyEngine.getPracticalMagic(computedLP);

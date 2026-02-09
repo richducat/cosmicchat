@@ -38,13 +38,20 @@ const NumerologyEngine = {
 }
 
 const AstrologyEngine = {
-  zodiacSigns: ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'],
+  zodiacSigns: ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'],
   getPlanetPos: (jd: number, speed: number, start: number) => {
     let pos = start + speed * jd
     pos = pos % 360
     return pos < 0 ? pos + 360 : pos
   },
   getSign: (deg: number) => AstrologyEngine.zodiacSigns[Math.floor(deg / 30)],
+  getZodiacSignSimple: (day: number, month: number) => {
+    const cusp = [20, 19, 21, 20, 21, 21, 23, 23, 23, 23, 22, 22]
+    const beforeCusp = ['Capricorn', 'Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius']
+    const afterCusp = ['Aquarius', 'Pisces', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn']
+    const idx = month - 1
+    return day < cusp[idx] ? beforeCusp[idx] : afterCusp[idx]
+  },
   computeChart: (date: Date) => {
     const time = date.getTime()
     const jd = time / 86400000 + 2440587.5 - 2451545.0
@@ -87,11 +94,19 @@ function tool_get_astrology_forecast(ctx: Body['ctx']) {
 
   const computedLP = Number(ctx?.computedLP ?? 0)
 
+  // Sun sign should be the standard zodiac-by-date (the chart model here is a toy approximation).
+  const sunSign = (() => {
+    const day = Number(d)
+    const month = Number(m)
+    if (!day || !month) return natalChart.Sun.sign
+    return AstrologyEngine.getZodiacSignSimple(day, month)
+  })()
+
   return {
     user: 'get_astrology_forecast',
     date: today.toDateString(),
     life_path: computedLP,
-    sun_sign: natalChart.Sun.sign,
+    sun_sign: sunSign,
     moon_sign: natalChart.Moon.sign,
     current_moon_sign: currentChart.Moon.sign,
     numerology_day: NumerologyEngine.reduceToMaster(
