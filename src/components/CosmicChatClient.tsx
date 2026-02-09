@@ -264,43 +264,24 @@ const MAJOR_CITIES = [
 ];
 
 const CoachService = {
-  call: async (apiKey: any, messages: any, tools: any, toolCallback: any): Promise<any> => {
+  call: async (messages: any, tools: any, toolCallback: any, ctx: any): Promise<any> => {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Secure: call our server-side proxy so no API key is ever exposed in the browser.
+      const response = await fetch('/api/coach', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o',
-          messages: messages,
-          tools: tools,
-          tool_choice: 'auto',
+          messages,
+          // pass deterministic context so the server can execute the tool if needed
+          ctx,
         }),
       });
 
-      if (!response.ok) throw new Error('Service connection failed');
-      const data = await response.json();
-      const message = data.choices[0].message;
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) throw new Error(data?.error || 'Service connection failed');
 
-      if (message.tool_calls) {
-        const toolMessages = [message];
-        for (const toolCall of message.tool_calls) {
-          const functionName = toolCall.function.name;
-          const args = JSON.parse(toolCall.function.arguments);
-          const result = await toolCallback(functionName, args);
-          toolMessages.push({
-            tool_call_id: toolCall.id,
-            role: 'tool',
-            name: functionName,
-            content: JSON.stringify(result),
-          });
-        }
-        return CoachService.call(apiKey, [...messages, ...toolMessages], tools, toolCallback);
-      }
-
-      return message.content;
+      return data.reply;
     } catch (error) {
       console.error(error);
       throw error;
@@ -339,7 +320,6 @@ const InfoTag = ({ icon: Icon, label, value }: any) => (
 );
 
 export default function CosmicChatClient() {
-  const [apiKey, setApiKey] = useState('');
   const [view, setView] = useState('welcome');
   const [onboardingStep, setOnboardingStep] = useState(1);
 
@@ -365,10 +345,7 @@ export default function CosmicChatClient() {
   const messagesEndRef = useRef<any>(null);
 
   useEffect(() => {
-    const storedKey = localStorage.getItem('cosmic_access_key');
     const storedProfile = localStorage.getItem('cosmic_profile');
-
-    if (storedKey) setApiKey(storedKey);
 
     if (storedProfile) {
       const p = JSON.parse(storedProfile);
@@ -406,14 +383,8 @@ export default function CosmicChatClient() {
     setView('dashboard');
   };
 
-  const handleSaveKey = (key: any) => {
-    setApiKey(key);
-    localStorage.setItem('cosmic_access_key', key);
-  };
-
   const clearData = () => {
     localStorage.clear();
-    setApiKey('');
     setName('');
     setBirthMonth('');
     setBirthDay('');
@@ -449,7 +420,7 @@ export default function CosmicChatClient() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || !apiKey) return;
+    if (!input.trim()) return;
 
     const newMsg = { role: 'user', content: input };
     setMessages((prev) => [...prev, newMsg]);
@@ -473,7 +444,12 @@ export default function CosmicChatClient() {
         },
       ];
 
-      const responseText = await CoachService.call(apiKey, [systemPrompt, ...messages, newMsg], tools, executeTool);
+      const responseText = await CoachService.call(
+        [systemPrompt, ...messages, newMsg],
+        tools,
+        executeTool,
+        { birthYear, birthMonth, birthDay, computedLP }
+      );
       setMessages((prev) => [...prev, { role: 'assistant', content: responseText }]);
     } catch (e) {
       setMessages((prev) => [
@@ -946,51 +922,32 @@ export default function CosmicChatClient() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {!apiKey && (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
-              <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center">
-                <Lock className="w-8 h-8 text-slate-400" />
-              </div>
-              <h2 className="text-xl font-bold">Unlock Daily Coaching</h2>
-              <p className="text-slate-400 max-w-xs">
-                To begin your personal sessions, please enter your Cosmic Access Key in settings.
-              </p>
-              <button
-                onClick={() => setView('settings')}
-                className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl transition-colors font-medium"
-              >
-                Go to Settings
-              </button>
-            </div>
-          )}
-
-          {apiKey && messages.length === 0 && (
+          {messages.length === 0 && (
             <div className="text-center mt-20 opacity-50">
               <Sparkles className="w-12 h-12 mx-auto mb-4 text-slate-600" />
               <p>The stars are aligned. Ask about your day.</p>
             </div>
           )}
 
-          {apiKey &&
-            messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] p-4 rounded-2xl ${
-                    m.role === 'user'
-                      ? 'bg-purple-600 text-white rounded-br-sm'
-                      : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-sm'
-                  }`}
-                >
-                  {m.content
-                    .split(' ')
-                    .map((line: any, idx: any) => (
-                      <p key={idx} className={line.startsWith('-') ? 'ml-4' : 'mb-2'}>
-                        {line}
-                      </p>
-                    ))}
-                </div>
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[85%] p-4 rounded-2xl ${
+                  m.role === 'user'
+                    ? 'bg-purple-600 text-white rounded-br-sm'
+                    : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-sm'
+                }`}
+              >
+                {m.content
+                  .split(' ')
+                  .map((line: any, idx: any) => (
+                    <p key={idx} className={line.startsWith('-') ? 'ml-4' : 'mb-2'}>
+                      {line}
+                    </p>
+                  ))}
               </div>
-            ))}
+            </div>
+          ))}
 
           {isLoading && (
             <div className="flex justify-start">
@@ -1005,27 +962,25 @@ export default function CosmicChatClient() {
           <div ref={messagesEndRef} />
         </div>
 
-        {apiKey && (
-          <div className="p-4 bg-slate-900 border-t border-slate-800">
-            <div className="relative">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="What energy surrounds me today?"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 pr-12 focus:ring-2 focus:ring-purple-500 outline-none"
-                disabled={isLoading}
-              />
-              <button
-                onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className="absolute right-2 top-2 p-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors disabled:bg-slate-700 disabled:text-slate-500"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="p-4 bg-slate-900 border-t border-slate-800">
+          <div className="relative">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              placeholder="What energy surrounds me today?"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 pr-12 focus:ring-2 focus:ring-purple-500 outline-none"
+              disabled={isLoading}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={isLoading || !input.trim()}
+              className="absolute right-2 top-2 p-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors disabled:bg-slate-700 disabled:text-slate-500"
+            >
+              <Send className="w-5 h-5" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
     );
   }
@@ -1041,15 +996,11 @@ export default function CosmicChatClient() {
 
         <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 mb-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2 text-slate-300">Cosmic Access Key (API)</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => handleSaveKey(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm font-mono"
-              placeholder="sk-..."
-            />
-            <p className="text-xs text-slate-500 mt-2">Your key connects you to the guidance engine.</p>
+            <label className="block text-sm font-medium mb-2 text-slate-300">Cosmic Access</label>
+            <div className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm">
+              Connected (secured server-side)
+            </div>
+            <p className="text-xs text-slate-500 mt-2">No API key is stored in your browser.</p>
           </div>
         </div>
 
