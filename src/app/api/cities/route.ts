@@ -8,14 +8,41 @@ type Row = { label: string; st: string; name: string; kind?: string }
 
 type Db = { version: string; count: number; rows: Row[] }
 
-let CACHE: Db | null = null
+type WorldRow = { label: string; city: string; country: string; countryName: string; admin1?: string; admin1Name?: string; pop?: number }
 
-function loadDb(): Db {
-  if (CACHE) return CACHE
+type WorldDb = { version: string; count: number; rows: WorldRow[] }
+
+let US_CACHE: Db | null = null
+let WORLD_CACHE: WorldDb | null = null
+
+function loadUs(): Db {
+  if (US_CACHE) return US_CACHE
   const p = path.join(process.cwd(), 'data', 'us_places.json')
-  const raw = fs.readFileSync(p, 'utf8')
-  CACHE = JSON.parse(raw) as Db
-  return CACHE
+  US_CACHE = JSON.parse(fs.readFileSync(p, 'utf8')) as Db
+  return US_CACHE
+}
+
+function loadWorld(): WorldDb {
+  if (WORLD_CACHE) return WORLD_CACHE
+  const p = path.join(process.cwd(), 'data', 'world_cities.json')
+  WORLD_CACHE = JSON.parse(fs.readFileSync(p, 'utf8')) as WorldDb
+  return WORLD_CACHE
+}
+
+function findMatches(labels: string[], q: string, limit: number) {
+  const out: string[] = []
+  for (const s of labels) {
+    if (out.length >= limit) break
+    if (s.toLowerCase().startsWith(q)) out.push(s)
+  }
+  if (out.length < limit) {
+    for (const s of labels) {
+      if (out.length >= limit) break
+      const l = s.toLowerCase()
+      if (!l.startsWith(q) && l.includes(q)) out.push(s)
+    }
+  }
+  return out
 }
 
 export async function GET(req: Request) {
@@ -25,23 +52,17 @@ export async function GET(req: Request) {
 
   if (q.length < 2) return NextResponse.json({ ok: true, q: qRaw, results: [] })
 
-  const db = loadDb()
+  const us = loadUs()
+  const world = loadWorld()
 
-  // Prefix match first, then contains. Keep it fast.
-  const results: Row[] = []
+  // Prefer US results first (your onboarding asks for "City, State")
+  const usLabels = us.rows.map((r) => r.label)
+  const worldLabels = world.rows.map((r) => r.label)
 
-  for (const r of db.rows) {
-    if (results.length >= 12) break
-    if (r.label.toLowerCase().startsWith(q)) results.push(r)
-  }
+  const usHits = findMatches(usLabels, q, 12)
+  const remaining = 12 - usHits.length
+  const worldHits = remaining > 0 ? findMatches(worldLabels, q, remaining) : []
 
-  if (results.length < 12) {
-    for (const r of db.rows) {
-      if (results.length >= 12) break
-      const l = r.label.toLowerCase()
-      if (!l.startsWith(q) && l.includes(q)) results.push(r)
-    }
-  }
-
-  return NextResponse.json({ ok: true, q: qRaw, results })
+  const labels = [...usHits, ...worldHits]
+  return NextResponse.json({ ok: true, q: qRaw, results: labels.map((label) => ({ label })) })
 }
